@@ -86,22 +86,38 @@
             </div>
             <hr>
             <div class="config">
-                <button class="config_btn" style="width: 100%; height: 100%" onclick="downloadLog()">Download full log</button>
+                <button class="config_btn" style="width: 100%; height: 5vh" onclick="downloadLog()">Download full log</button>
             </div>
             <div class="config">
-                <button class="config_btn" style="width: 100%; height: 100%" onclick="toggleOwnerActions()">Toggle room owner actions on/off</button>
+                <button class="config_btn" style="width: 100%; height: 5vh" onclick="toggleOwnerActions()">Toggle room owner actions on/off</button>
+            </div>
+            <div class="config" id="sectionfilter" style="flex-wrap: wrap;">
+                <p>Filter by section:</p>
+                <div id="secbtn"></div>
             </div>
         </div>
-        <div class="container adminpanel">
-                <p style="text-align: center; margin-bottom: 0; font-size: x-large">Action Log</p>
-                <p style="text-align: center; margin-top: 0; font-size: medium">(refreshes every 30 seconds)</p>
+        <div class="container adminpanel" style="flex-direction: column;">
+            <div class="view" id="viewswitch" style="flex-direction: row; justify-content: space-evenly;">
+                <button class="view_btn config_btn" id="btn_actionlog" style="height: 4vh" onclick="showView(0)">Action Log</button>
+                <button class="view_btn config_btn" id="btn_sectionmgmt" style="height: 4vh" onclick="showView(1)">Section Management</button>
+            </div>
+            <div class="view" id="actionlog">
+                <p style="text-align: center; font-size: large">(refreshes every 30 seconds)</p>
                 <table id="attendance" cellspacing="10px" cellpadding="4vh">
                     <thead>
-                        <tr> <td>Time</td> <td>User</td> <td>Action</td> <td>Queue</td> <td>View all info</td> </tr>                    </tr>
+                        <tr> <td>Time</td> <td>User</td> <td>Section</td> <td>Action</td> <td>Queue</td> <td>View all info</td> </tr>
                     </thead>
                     <tbody>
                     </tbody>
                 </table>
+            </div>
+            <div class="view" id="sectionmgmt">
+                <p style="text-align: center; font-size: large">This feature allows you to identify users (students and staff) by their lab section.  When added, the queues will display the section number for students adding themselves to the queue.  A section of "0" for a username indicates that person is part of course staff.</p>
+                <p style="text-align: center; font-size: large; margin-top: 0">Enter or upload a CSV file below containing two columns - username and section number.</p>
+                <textarea placeholder="username,section&#10;staff1,0&#10;staff2,0&#10;student1,001&#10;student2,002&#10;student3,010" id="sectiondata"></textarea>
+                <input class="btn" style="padding: 0.25em; text-align: center; margin-top: 15px" type="file" accept=".csv" onchange="loadFileAsText(event)">
+                <button class="config_btn" style="margin: 2vh 0; width: 100%; height: 5vh" onclick="updateSection()">Add/update section data</button>
+            </div>
         </div>
     </div>
     <script>
@@ -153,7 +169,7 @@
             })
         }
         async function clearLog() {
-            var r = await fetch(`admin.py?room=${window.roomname}&clearlog=true`);
+            var r = await fetch(`admin.wsgi?room=${window.roomname}&clearlog=true`);
             var t = await r.text();
             if (t == "cleared")
                 alert("Log has been backed up and cleared.");
@@ -195,7 +211,7 @@
                 document.querySelector("#cooldown").value = document.querySelector("#cooldown").getAttribute("cooldown");
                 return;
             }
-            var r = await fetchAndLimit(`../roomd.py?setup=true&room=${window.roomname}&action=setcool&cooldown=${cooldown}`);
+            var r = await fetchAndLimit(`../roomd.wsgi?setup=true&room=${window.roomname}&action=setcool&cooldown=${cooldown}`);
             if (r.status == 200) {
                 alert("Users will not be able to add themselves to any queue again for " + cooldown + " minutes.");
                 document.querySelector("#cooldown").setAttribute("cooldown", cooldown);
@@ -206,11 +222,11 @@
             }
         }
         function refreshRoom() { 
-            var selected = document.getElementsByClassName(`config_selected`)[0];
-            if (selected) {
-                selected.classList.toggle("config_selected", false);
-                selected.classList.toggle("config_select", true);
-            }
+            // var selected = document.getElementsByClassName(`config_selected`)[0];
+            // if (selected) {
+            //     selected.classList.toggle("config_selected", false);
+            //     selected.classList.toggle("config_select", true);
+            // }
             var toselect = document.getElementById(`btn_${window.roomname}`);
             toselect.classList.toggle("config_select", false);
             toselect.classList.toggle("config_selected", true);
@@ -221,7 +237,7 @@
                 window.evtSource.close();
             }
             if (typeof(EventSource) !== "undefined") {
-                window.evtSource = new EventSource(`admin.py?sseupdate=true&room=${window.roomname}`);
+                window.evtSource = new EventSource(`admin.wsgi?sseupdate=true&room=${window.roomname}`);
                 window.evtSource.onmessage = function(event) {
                     var json = JSON.parse(event.data);
                     window.roomlog = json;
@@ -243,7 +259,7 @@
             var attendance_tbl = document.querySelector("#attendance tbody");
             attendance_tbl.innerHTML = "";
             if (json === null) {
-                var r = await fetch(`admin.py?room=${window.roomname}&log=true`);
+                var r = await fetch(`admin.wsgi?room=${window.roomname}&log=true`);
                 json = await r.json();
             }
             json.reverse();
@@ -251,27 +267,31 @@
                 var row = document.createElement("tr");
                 var time = document.createElement("td");
                 var user = document.createElement("td");
+                var section = document.createElement("td");
                 var action = document.createElement("td");
                 var queue = document.createElement("td");
                 var misc = document.createElement("td");
                 time.innerHTML = new Date(parseFloat(a[0]) * 1000).toLocaleString();
                 user.innerHTML = a[1];
+                section.innerHTML = a[2];
                 if (window.roomdata.owners.includes(a[1])) {
                     row.classList.add("owneraction");
                 }
-                action.innerHTML = ACTIONS[a[2]][0];
-                if (a[2].startsWith("q") || a[2].startsWith("u")) {
-                    queue.innerHTML = a[4];
+                action.innerHTML = ACTIONS[a[3]][0];
+                // if this is a queue- or user-related action...
+                if (a[3].startsWith("q") || a[3].startsWith("u")) {
+                    queue.innerHTML = a[5];
                 }
                 else {
+                    // if we're doing something to the room, not relevant
                     queue.innerHTML = "n/a";
                 }
                 misc.innerHTML = "ℹ️";
                 misc.style.cursor = "pointer";
                 misc.addEventListener("click", () => {
                     // show what remaining keys there are for this action
-                    var keys = ACTIONS[a[2]].slice(1);
-                    var values = a.slice(3);
+                    var keys = ACTIONS[a[3]].slice(1);
+                    var values = a.slice(4);
                     var msg = "";
                     for (var i = 0; i < keys.length; i++) {
                         msg += `${keys[i]}: ${values[i]}\n`;
@@ -280,6 +300,7 @@
                 });
                 row.appendChild(time);
                 row.appendChild(user);
+                row.appendChild(section);
                 row.appendChild(action);
                 row.appendChild(queue);
                 row.appendChild(misc);
@@ -287,11 +308,11 @@
             });
         }
         async function downloadLog() {
-            var r = await fetch(`admin.py?room=${window.roomname}&fulllog=true`);
+            var r = await fetch(`admin.wsgi?room=${window.roomname}&fulllog=true`);
             json = await r.json();
             json.reverse();
             var data = json.map(r => new Date(parseFloat(r[0]) * 1000).toLocaleString().replace(", ", "-") + "," + r.slice(1,3) + "," + r.slice(4).join(",")).join("\n");
-            var blob = new Blob(["Date/Time,User,Action,Queue,Other\n", data], {type: "text/csv"});
+            var blob = new Blob(["Date/Time,User,Section,Action,Queue,Other\n", data], {type: "text/csv"});
             var dlink = document.createElement('a');
             dlink.download = `actionlog_${window.roomname}.csv`;
             dlink.href = window.URL.createObjectURL(blob);
@@ -306,11 +327,42 @@
             dlink.click();
             dlink.remove();
         }
+        function showView(opt=0) {
+            Array.from(document.querySelectorAll(".view:not([id='viewswitch'])")).forEach(e => e.style.display = "none");
+            Array.from(document.querySelectorAll(".view_btn")).forEach(e => e.classList.toggle("config_selected", false));
+            switch(opt) {
+                case 0:
+                    document.getElementById("actionlog").style.display = "flex";
+                    document.getElementById("btn_actionlog").classList.toggle("config_selected", true);
+                    break;
+                case 1:
+                    document.getElementById("sectionmgmt").style.display = "flex";
+                    document.getElementById("btn_sectionmgmt").classList.toggle("config_selected", true);
+                    break;
+            }
+        }
+        async function loadFileAsText(e){
+            var fileToLoad = e.currentTarget.files[0];
+            document.querySelector("#sectiondata").value = await fileToLoad.text();
+        }
+        async function updateSection() {
+            var data = document.querySelector("#sectiondata").value;
+            // urlencode
+            data = encodeURIComponent(data);
+            var r = await fetchAndLimit(`admin.wsgi?room=${window.roomname}&section=true&data=${data}`);
+            if (r.status == 200) {
+                alert("Section data has been updated.");
+            }
+            else {
+                alert("An error has occurred.  Please try again. " + r.statusText);
+            }
+        }
         window.onbeforeunload = () => {
             window.disableErrors = true;
         }
         window.onload = async () => {
             clock();
+            showView(0);
             window.username = "--username--";   // replaced by index.cgi
             if (!localStorage.darkmode) {
                 localStorage.darkmode = "false";
@@ -322,20 +374,68 @@
                 document.documentElement.setAttribute("theme", "light");
             }
             window.roomname = "--room--";   // replaced by index.cgi
-            var response = await fetchAndLimit('../roomd.py?setup=true&action=chk&admin=true&room=' + window.roomname);
+            var response = await fetchAndLimit('../roomd.wsgi?setup=true&action=chk&admin=true&room=' + window.roomname);
             if (response.status != 200) {
                 alert("An error occurred while fetching room data.  Please refresh.");
                 return;
             }
             window.roomdata = await response.json();
             document.getElementById("subtitle").innerHTML = window.roomdata.subtitle == "" ? "unset" : window.roomdata.subtitle;
-            document.getElementById("is-locked").innerHTML = window.roomdata["is-locked"] ? "True" : "False";
-            document.getElementById("is-permanent").innerHTML = window.roomdata["is-permanent"] ? "True" : "False";
+            document.getElementById("is-locked").innerHTML = window.roomdata["is-locked"] ? "true" : "false";
+            document.getElementById("is-permanent").innerHTML = window.roomdata["is-permanent"] ? "true" : "false";
             document.getElementById("owners").innerHTML = window.roomdata["owners"];
             document.getElementById("cooldown").value = window.roomdata["cooldown"];
             document.getElementById("cooldown").setAttribute("cooldown", window.roomdata["cooldown"]);
             document.getElementById("roomlist").innerHTML = `<button class="config_btn config_select" onclick="refreshRoom()" id="btn_${window.roomname}">${window.roomname}</button>`;
+            // get section data if it exists
+            var r = await fetchAndLimit(`admin.wsgi?room=${window.roomname}&section=true`);
+            if (r.status == 200) {
+                var data = await r.json();
+                if (data.data != "")
+                    document.querySelector("#sectiondata").value = data.data;
+            }
+            // determine sections from attendance table
+            var sections = new Set();
+            var r = await fetchAndLimit(`admin.wsgi?room=${window.roomname}&log=true`);
+            var json = await r.json();
+            json.forEach(a => {
+                sections.add(a[2]);
+            });
+            var sectionfilter = document.getElementById("secbtn");
+            sections.forEach(s => {
+                var btn = document.createElement("button");
+                btn.style.width = "35px";
+                btn.innerHTML = s;
+                btn.classList.add("config_btn");
+                btn.style.margin = "0 5px";
+                btn.onclick = () => {
+                    var list = Array.from(document.querySelector("#attendance").children[1].children);
+                    list.forEach(e => {
+                        if (e.children[2].innerHTML != s) {
+                            e.style.display = "none";
+                        }
+                        else {
+                            e.style.display = "";
+                        }
+                    });
+                }
+                sectionfilter.appendChild(btn);
+            });
+            // add All button to unhide everything
+            var btn = document.createElement("button");
+            btn.style.width = "55px";
+            btn.innerHTML = "All";
+            btn.classList.add("config_btn");
+            btn.style.margin = "0 5px";
+            btn.onclick = () => {
+                var list = Array.from(document.querySelector("#attendance").children[1].children);
+                list.forEach(e => {
+                    e.style.display = "";
+                });
+            }
+            sectionfilter.appendChild(btn);
             refreshRoom();
+            document.body.style.opacity = 1;
         }
         function clock() {
             function IntTwoChars(i) {

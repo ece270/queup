@@ -63,6 +63,7 @@
     </div>
     <script>
         window.username = "--username--";
+        window.section = "--section--";
         window.is_owner = false;  // not a risk if changed manually (maliciously) client-side.
                                   // all authz requests are checked against room owners.
         function fetchAndLimit(url) {
@@ -105,7 +106,7 @@
                     alert("You are not authorized to close this room.  Unauthorized requests will be logged.");
                     return;
                 }
-                var response = await fetchAndLimit('roomd.py?setup=true&action=del&room=' + roomname);
+                var response = await fetchAndLimit('roomd.wsgi?setup=true&action=del&room=' + roomname);
                 if (response.status != 200) {
                     alert("An error occurred while deleting the room.  Closing out anyway...");
                     returnToOverlay();
@@ -156,7 +157,7 @@
                     return;
             }
             try {
-                var response = await fetchAndLimit('roomd.py?setup=true&action=add&room=' + roomname + '&queue=' + queue);
+                var response = await fetchAndLimit('roomd.wsgi?setup=true&action=add&room=' + roomname + '&queue=' + queue);
                 if (response.status != 200) {
                     t = await response.text();
                     alert("An error occurred while creating the queue.  Error: " + t);
@@ -175,7 +176,7 @@
                 return;
             }
             try {
-                var response = await fetchAndLimit('roomd.py?setup=true&action=add&room=' + roomname);
+                var response = await fetchAndLimit('roomd.wsgi?setup=true&action=add&room=' + roomname);
                 console.log(response);
                 if (response.status != 200) {
                     alert("An error occurred while creating the room. It's possible the server is just down - try again later.  If this was after multiple attempts, the room name may already be taken.");
@@ -196,7 +197,7 @@
                 return;
             }
             try {
-                var response = await fetchAndLimit('roomd.py?setup=true&action=chk&room=' + roomname);
+                var response = await fetchAndLimit('roomd.wsgi?setup=true&action=chk&room=' + roomname);
                 if (response.status != 200) {
                     alert("An error occurred while joining the room.  Please double check the room code.");
                     return;
@@ -221,6 +222,7 @@
                 return;
             }
             window.is_owner = json["is-owner"];
+            window.section = json["section"];
             var roomsubtitle = (json["subtitle"] === null) ? "" : json["subtitle"];
             window.roomlocked = json["is-locked"];
             window.roompermanent = json["is-permanent"];
@@ -252,7 +254,7 @@
         }
         function createEventSource() {
             if (typeof(EventSource) !== "undefined") {
-                window.evtSource = new EventSource("roomd.py?sseupdate=true&room=" + window.roomname);
+                window.evtSource = new EventSource("roomd.wsgi?sseupdate=true&room=" + window.roomname);
                 window.evtSource.onopen = function() {
                     console.log("Connection established.");
                     document.getElementsByClassName("queueoverlay")[0].style.display = "none";
@@ -294,7 +296,7 @@
             // json format - { 'room': { 'queue': [username, time] } }
             // so we extract queues by just taking the first key and keying into "json" to get the queues.
             // make sure to sort by longest time created!
-            var queues = json[Object.keys(json).filter(e => !["subtitle", "is-owner", "is-permanent", "owners"].includes(e))[0]];
+            var queues = json[Object.keys(json).filter(e => !["subtitle", "is-owner", "section", "is-permanent", "owners"].includes(e))[0]];
             // delete queues that don't exist in the JSON
             Array.from(document.querySelectorAll(".queue"))
             .filter(_q => _q.id != "queueadd")                      // must be a real queue - do not remove "Add Queue"!
@@ -325,13 +327,15 @@
                             var user = a[1];
                             var data = q.filter(e => e[0] == user)[0][2];
                             var marked = q.filter(e => e[0] == user)[0][3] == "1" ? true : false;
+                            var section = q.filter(e => e[0] == user)[0][4];
+                            section = section ? section : "";
                             if (a[1] == window.username) {
                                 window.userdata = data;
                                 window.usermarked = marked;
                                 addSelf(_q);
                             }
                             else {
-                                addToQueue(a[1], data, marked, _q);
+                                addToQueue(a[1], data, marked, section, _q);
                             }
                             break;
                         case "shift":
@@ -388,6 +392,7 @@
             window.disableErrors = true;
         }
         window.onload = async () => {
+            document.body.style.opacity = 1;
             clock();
             // initialize if not set
             if (!localStorage.darkmode) {
@@ -441,10 +446,15 @@
             if (list.length > 0) {
                 list[0].remove();
             }
+            if (window.section == "")
+                var sec = "";
+            else
+                var sec = `<p class="section_text">${window.section == "" ? "No section" : "Sec " + window.section}</p>`;
             var html = `<div class="waiter is-self ${window.usermarked ? "flashing" : ""}" onclick="addBtnHandler(event, '${queue}')">
                             <p class="username_text">${window.username}</p>
                             <p class="data_text">${window.userdata}</p>
                             <p class="time_text">&lt;1 min</p>
+                            ${sec}
                         </div>`;
             var added = new DOMParser().parseFromString(html, 'text/html').body.children[0];
             document.querySelector(`#queue${queue}`).appendChild(added);
@@ -463,7 +473,7 @@
             }
         }
         function delFromRoomTA(username, queue) {
-            fetchAndLimit(`roomd.py/?action=del&room=${window.roomname}&queue=${queue}&username=${username}`);
+            fetchAndLimit(`roomd.wsgi/?action=del&room=${window.roomname}&queue=${queue}&username=${username}`);
             var list = Array.from(document.querySelector(`#queue${queue}`).children).filter(e => e.classList.contains('waiter') && e.querySelector('.username_text').innerHTML == username);
             if (list.length > 0) {
                 list[0].remove();
@@ -479,14 +489,14 @@
                     if (action == "add") {
                         var userdata = null;
                         while ((userdata == null) || !/^[a-zA-Z0-9 ,\_\'\(\)]{1,50}$/.test(userdata)) {
-                            var userdata = prompt("Enter text that would allow a TA to identify you in-person (eg. your name, station number) or online (Zoom name).  Press Escape/Cancel to close.", window.userdata);
+                            var userdata = prompt("Enter your name, or other text that would allow a TA to identify you in-person (eg. your name, station number) or online (Zoom name).  Press Escape/Cancel to close.", window.userdata);
                             if (userdata == null) {
                                 window.disableOperations = false;
                                 return;
                             }
                         }
                         window.userdata = userdata;
-                        fetchAndLimit(`roomd.py/?action=add&room=${window.roomname}&queue=${queue}&waitdata=${userdata}`)
+                        fetchAndLimit(`roomd.wsgi/?action=add&room=${window.roomname}&queue=${queue}&waitdata=${userdata}`)
                         .then(r => r.text())
                         .then(t => {
                             if (t.startsWith("[cooldown]")) {
@@ -505,7 +515,7 @@
                         })
                     }
                     else {
-                        fetchAndLimit(`roomd.py/?action=del&room=${window.roomname}&queue=${queue}`);
+                        fetchAndLimit(`roomd.wsgi/?action=del&room=${window.roomname}&queue=${queue}`);
                     }
                     var qlist = document.querySelector(`#queue${queue}`).children;
                     var added = qlist[qlist.length - 1];
@@ -522,7 +532,7 @@
                 console.error(err);
             }
         }
-        function addToQueue(username, data, marked, queue) {
+        function addToQueue(username, data, marked, section, queue) {
             var list = document.querySelector(`#queue${queue}`);
             // do not add duplicates!
             if (Array.from(list.children).map(e => e.querySelector(".username_text").innerHTML).includes(username)) {
@@ -535,7 +545,7 @@
             var time = "&lt;1";
             var parser = new DOMParser();
             var user_data = `<p class="data_text">${data}</p>`;
-            var newhtml = parser.parseFromString(`<div class="waiter ${marked ? "flashing" : ""}"><p class="username_text">${username}</p>${user_data}<p class="time_text">${time} min</p>${owner_buttons}</div>`, 'text/html');
+            var newhtml = parser.parseFromString(`<div class="waiter ${marked ? "flashing" : ""}"><p class="username_text">${username}</p>${user_data}<p class="time_text">${time} min</p><p class="section_text">${(section == "") ? "No section" : ("Sec " + section)}</p>${owner_buttons}</div>`, 'text/html');
             var elm = newhtml.body.children[0];
             console.log("addtoqueue", elm, list.children);
             // has our own entry already been added?  Then add the incoming entry at the end of the list.
@@ -580,7 +590,7 @@
                     curTarget.innerHTML = curTarget.getAttribute("queue");
                     return;    
                 }
-                var r = await fetchAndLimit(`roomd.py/?setup=true&action=del&room=${window.roomname}&queue=${curTarget.getAttribute("queue")}`);
+                var r = await fetchAndLimit(`roomd.wsgi/?setup=true&action=del&room=${window.roomname}&queue=${curTarget.getAttribute("queue")}`);
                 if (r.status != 200) {
                     alert("An error occurred while deleting the queue.  Please try again.");
                     alert(await r.text());
@@ -597,7 +607,7 @@
                 curTarget.innerHTML = curTarget.getAttribute("queue");
                 return;
             }
-            var r = await fetchAndLimit(`roomd.py/?setup=true&action=ren&room=${window.roomname}&queue=${curTarget.getAttribute("queue")}&newqueue=${curTarget.innerHTML}`);
+            var r = await fetchAndLimit(`roomd.wsgi/?setup=true&action=ren&room=${window.roomname}&queue=${curTarget.getAttribute("queue")}&newqueue=${curTarget.innerHTML}`);
             if (r.status != 200) {
                 alert("An error occurred while renaming the queue.  Please try again.");
                 curTarget.innerHTML = curTarget.getAttribute("queue");
@@ -636,7 +646,7 @@
                 }
                 var subtitle = curTarget.innerHTML;
             }
-            var r = await fetchAndLimit(`roomd.py/?setup=true&action=setsub&room=${window.roomname}&subtitle=${subtitle}`);
+            var r = await fetchAndLimit(`roomd.wsgi/?setup=true&action=setsub&room=${window.roomname}&subtitle=${subtitle}`);
             if (r.status != 200) {
                 alert("An error occurred while setting the room description.  Please try again.");
                 curTarget.innerHTML = curTarget.getAttribute("subtitle");
@@ -677,7 +687,7 @@
                 alert("You are not authorized to clear this queue.  Unauthorized requests will be logged.");
                 return;
             }
-            fetchAndLimit(`roomd.py/?setup=true&action=clear&room=${window.roomname}&queue=${queue}`);
+            fetchAndLimit(`roomd.wsgi/?setup=true&action=clear&room=${window.roomname}&queue=${queue}`);
         }
         function markOrDelUser(event, action='mark') {
             if (!window.is_owner) {
@@ -688,7 +698,7 @@
             var username = event.currentTarget.parentNode.parentNode.querySelector(".username_text").innerHTML;
             if (action == 'mark') {
                 // send a "mark" signal for this user.  if already marked, will be unmarked.
-                fetchAndLimit(`roomd.py/?setup=true&action=mark&room=${window.roomname}&queue=${queue}&username=${username}`);
+                fetchAndLimit(`roomd.wsgi/?setup=true&action=mark&room=${window.roomname}&queue=${queue}&username=${username}`);
             }
             else {
                 // delete user from queue. 
@@ -719,7 +729,7 @@
         async function toggleRoomLock() {
             try {
                 var action = document.getElementById("toggleroomlock").innerHTML == "Lock Room" ? "lock" : "unlock";
-                var response = await fetchAndLimit(`roomd.py?setup=true&action=${action}&room=` + window.roomname);
+                var response = await fetchAndLimit(`roomd.wsgi?setup=true&action=${action}&room=` + window.roomname);
                 if (response.status != 200) {
                     alert("An error occurred while toggling the room lock.  Error: " + await response.text());
                     return;
@@ -741,7 +751,7 @@
             var owners = null;
             while (owners == null) {
                 var owners = prompt("Enter a comma-separated list of usernames to " + (action == "add" ? "add as" : "delete from") + " room owners. (eg. user1, user2, user3)\n" + 
-                                    "You can also enter an empty string to get the current list of owners.");
+                                    "You can also enter an empty string to get the current list of owners.  Usernames must be in all small letters.");
                 if (owners == null) {
                     return;
                 }
@@ -749,14 +759,14 @@
                 // mistake typing usernames
                 try { owners = owners.split(","); }
                 catch(err) { owners = null; }
-                if (owners != "" && !/^[a-zA-Z0-9\-, /]{3,300}$/.test(owners.join(","))) {
+                if (owners != "" && !/^[a-z0-9\-, /]{3,300}$/.test(owners.join(","))) {
                     alert("Usernames must be alphanumeric with optional hyphens, be more than 3 characters and less than 16 characters long.");
                     owners = null;
                 }
             }
             try {
                 var _action = action == 'add' ? '' : 'del';
-                var response = await fetchAndLimit(`roomd.py?setup=true&action=${_action}own&room=` + window.roomname + '&newusers=' + owners.join(","));
+                var response = await fetchAndLimit(`roomd.wsgi?setup=true&action=${_action}own&room=` + window.roomname + '&newusers=' + owners.join(","));
                 if (response.status != 200) {
                     alert("An error occurred while modifying the owner list.  Error: " + await response.text());
                     return;

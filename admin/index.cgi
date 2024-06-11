@@ -3,6 +3,7 @@
 
 import os, io, sys, codecs, re
 import sqlite3
+from json import loads
 
 ROOM_RGX = r'^[A-Z0-9]{5}$'
 
@@ -29,11 +30,20 @@ def getowners(room_db, room):
         allusers = allusers[0].split(",")
         return allusers
 
+def getsections(room):
+    if not os.path.exists(private + "sections/" + room + ".json"):
+        return {}
+    with open(private + "sections/" + room + ".json", "r") as f:
+        sections = loads(f.read())
+    return sections
+
 username = os.environ['REMOTE_USER']
 query = os.environ['QUERY_STRING']
 
 parse_qs = {}
 for pair in query.split("&"):
+    if pair == "":
+        continue
     key, value = pair.split("=")
     parse_qs[key] = value
 
@@ -60,10 +70,12 @@ else:
     room_db = private + "rooms/" + parse_qs["room"] + ".db"
     room = parse_qs["room"]
     owners = getowners(room_db, room)
+    sectiondata = getsections(room)
+    owners += [x for x in sectiondata if sectiondata[x] == "0"]
     if username not in owners:
         print("<h3>You are not an owner of this room.  Access has been logged.</h3>")
         sys.exit(0)
-    with io.open('index.html', 'r', encoding='utf8') as file:
+    with io.open('app.html', 'r', encoding='utf8') as file:
         # fill username
         data = file.read().replace("--username--", username)
         # fill room
