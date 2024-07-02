@@ -825,23 +825,30 @@ def sseupdate(environ, start_response):
 
     yield ("data: %s\n\n" % json.dumps(getusers("", room))).encode()
     wm = pyinotify.WatchManager()
-    notifier = pyinotify.Notifier(wm, EventHandler(room), timeout=30*1000)
-    wm.add_watch(room_db, pyinotify.IN_MODIFY, rec=True)
+    notifier = pyinotify.Notifier(wm, EventHandler(room), timeout=120*1000)
+    wds = wm.add_watch(room_db, pyinotify.IN_MODIFY, rec=True)
+    wd = wds[room_db]
     # start pyinotify
-    while True:
+    notifier.process_events()
+    while notifier.check_events(timeout=120*1000):
+        # above line returns after 30 seconds or if room is updated
+        notifier.read_events()
         notifier.process_events()
-        while notifier.check_events():
-            # above line returns after 30 seconds or if room is updated
-            notifier.read_events()
-            notifier.process_events()
+        try:
+            yield ("data: %s\n\n" % json.dumps(getusers("", room))).encode()
+        except:
+            wm.rm_watch(room_db)
+            wm.close()
             try:
-                yield ("data: %s\n\n" % json.dumps(getusers("", room))).encode()
+                sys.exit(0)
             except:
-                wm.close()
-                try:
-                    sys.exit(0)
-                except:
-                    os._exit(0)
+                os._exit(0)
+    # if we reach this point, no events have occurred whatsoever, 
+    # so we must exit
+    wm.rm_watch(wd)
+    wm.close()
+    return "data: %s\n\n" % json.dumps(getusers("", room))
+    
 
 MIDDLEWARES = [ ]
 app = reduce(lambda h, m: m(h), MIDDLEWARES, application)
