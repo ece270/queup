@@ -95,7 +95,7 @@ def sseupdate(environ, start_response):
 
     yield ("data: %s\n\n" % json.dumps(getdblog(room)[-50:])).encode()
     # this time, add a timeout so it doesn't hang forever
-    rds = redis.Redis(unix_socket_path=open(private + 'redis_socket').read().strip(), socket_timeout=60)
+    rds = redis.Redis(unix_socket_path=open(private + 'redis_socket').read().strip(), socket_timeout=30)
     try:
         with rds.monitor() as m:
             for command in m.listen():

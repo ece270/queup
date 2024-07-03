@@ -221,6 +221,21 @@
                 document.querySelector("#cooldown").value = document.querySelector("#cooldown").getAttribute("cooldown");
             }
         }
+        function createEventSource() {
+            window.evtSource = new EventSource(`admin.wsgi?sseupdate=true&room=${window.roomname}`);
+            window.evtSource.onmessage = function(event) {
+                var json = JSON.parse(event.data);
+                window.roomlog = json;
+                updateRoomLog(json);
+            };
+            window.evtSource.onerror = () => {
+                if (!window.disableErrors) {
+                    window.evtSource.close();
+                    console.log("Connection lost.  Retrying...");
+                    setTimeout(() => createEventSource, 5000);
+                }
+            }
+        }
         function refreshRoom() { 
             // var selected = document.getElementsByClassName(`config_selected`)[0];
             // if (selected) {
@@ -237,19 +252,7 @@
                 window.evtSource.close();
             }
             if (typeof(EventSource) !== "undefined") {
-                window.evtSource = new EventSource(`admin.wsgi?sseupdate=true&room=${window.roomname}`);
-                window.evtSource.onmessage = function(event) {
-                    var json = JSON.parse(event.data);
-                    window.roomlog = json;
-                    updateRoomLog(json);
-                };
-                window.evtSource.onerror = () => {
-                    if (!window.disableErrors) {
-                        window.evtSource.close();
-                        alert("An error has occurred awaiting updates from the server.  Please refresh the page.");
-                        // console.error(err);
-                    }
-                }
+                createEventSource()
             } 
             else {
                 alert("This browser does not support Server-Sent Events, which is required to handle room functionality.  Use a more modern browser like Firefox or Chrome.");
