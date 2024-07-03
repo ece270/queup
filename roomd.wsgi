@@ -242,6 +242,8 @@ def application(environ, start_response):
             except redis.RedisError as e: 
                 return ret_500(start_response, "RedisError: " + str(e))
             except Exception as e:
+                import traceback
+                sys.stderr.write(traceback.format_exc())
                 return ret_ok(start_response, str(e))
         elif will_chk:
             return ret_ok(start_response, json.dumps(getusers("", room)))

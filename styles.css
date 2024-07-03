@@ -24,6 +24,9 @@ nav > div {
 
 #roomstatus {
     font-size: 20px;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 10px;
 }
 
 #closeroom {

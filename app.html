@@ -236,11 +236,12 @@
             document.getElementById("roomstatus").classList.toggle("hide-if-not-owner", !window.is_owner);
             // very hacky way to duplicate element while getting rid of event listeners.
             if (window.is_owner) {
-                document.getElementById("roomstatus").outerHTML = document.getElementById("roomstatus").outerHTML;
-                document.getElementById("roomstatus").innerHTML = `Room status: ${window.roompermanent ? "Permanent" : "Temporary"}`;
+                // not a redundant statement!!! this is to ensure that the event listener is removed.
+                document.getElementById("roomstatus").outerHTML = document.getElementById("roomstatus").outerHTML;  
+                document.getElementById("roomstatus").innerHTML = `Room status: ${window.roompermanent ? "Permanent" : "Temporary"} [?]`;
                 document.getElementById("roomstatus").addEventListener("click", (e) => {
                     alert(window.roompermanent ? `This room has been marked permanent.  As a result, it cannot be deleted, and will not automatically be removed after 24 hours of inactivity.` 
-                            : `This room is temporary, which means it will be removed after 24 hours of inactivity, and can be deleted by any of the room owners.  If you are a TA/instructor/professor who wishes to keep this room layout permanently to avoid having to recreate the room every day, please contact Niraj (niraj@purdue.edu) with the room code to make it permanent.`)
+                            : `This room is temporary, which means it will be removed after 24 hours of inactivity, and can be deleted by any of the room owners.  \n\nIf you are a TA/instructor/professor who wishes to keep this room layout permanently to avoid having to recreate the room every day, please send Niraj (niraj@purdue.edu) an email with the room code and "Queup" in the subject line to make it permanent.`)
                 });
             }
             if (window.roomlocked == true)
@@ -410,6 +411,14 @@
                     document.querySelector("#gear").click();
                 }
             }, true);
+            setTimeout(() => {
+                // if room= specified in query string, join room with it
+                if (window.location.search.includes("room=")) {
+                    var room = window.location.search.split("room=")[1].split("&")[0];
+                    document.getElementById("joinroom").value = room;
+                    joinRoom();
+                }
+            }, 500);
         }
         function syncArr(_old, _new) {
             var actions = [];
@@ -709,7 +718,7 @@
         function addQueue(queue) {
             var parser = new DOMParser();
             var newhtml = parser.parseFromString(`<div style="width: 100%; display: flex; flex-direction: row; justify-content: space-between; align-items: center">
-            <p class="queuetitle" ${window.is_owner ? "" : "style='cursor:default'"}" onblur="renameQueue(event)" onkeydown="if(['Enter','Escape'].includes(event.key)){event.preventDefault();event.currentTarget.blur()}" queue="${queue}" ${window.is_owner ? "contenteditable" : ""}>${queue}</p>
+            <p title="Want to delete this queue?  Set the name to an empty string." class="queuetitle" ${window.is_owner ? "" : "style='cursor:default'"}" onblur="renameQueue(event)" onkeydown="if(['Enter','Escape'].includes(event.key)){event.preventDefault();event.currentTarget.blur()}" queue="${queue}" ${window.is_owner ? "contenteditable" : ""}>${queue}</p>
             ${window.is_owner ? ('<button class="btn clearbtn" style="display: flex;" onclick=\'clearQueue("' + queue + '")\'>Clear</button>') : ""}
             </div>
             <div id="queue${queue}" class="queue"></div>`, 'text/html');

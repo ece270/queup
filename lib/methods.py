@@ -329,14 +329,14 @@ def getusers(queue, room):
         for q in rds_room["queues"]:
             all_users[q] = []
             for x in rds_room["queues"][q]:
-                all_users[q].append((x["user"], x["time"], x["waitdata"], sections.get(x["user"], "")))
+                all_users[q].append((x["user"], x["time"], x["waitdata"], x["mark"], sections.get(x["user"], "")))
         room_d = {}
         room_d[room] = all_users
         return room_d
     else:
         rds_room = json.loads(rds.get("room"+room))
         room_d = {}
-        return [(x["user"], x["time"], x["waitdata"], sections.get(x["user"], "")) for x in rds_room["queues"][queue]]
+        return [(x["user"], x["time"], x["waitdata"], x["mark"], sections.get(x["user"], "")) for x in rds_room["queues"][queue]]
 
 def getsections(room):
     if not rds.exists(private + "sections/" + room + ".json"):
@@ -367,10 +367,13 @@ def togglemark(user, queue, room):
     rds_room = json.loads(rds.get("room"+room))
     if queue not in rds_room["queues"]:
         raise Exception("togglemark: Queue {0} does not exist in room {1}".format(queue, room))
-    marked = rds_room["queues"][queue].get(user)
-    if marked is None:
+    marked = [x["mark"] for x in rds_room["queues"][queue] if x["user"] == user]
+    if len(marked) == 0:
         raise Exception("togglemark: User {0} not in queue {1} in room {2}".format(user, queue, room))
-    rds_room["queues"][queue][user] = 1 - int(marked)
+    marked = marked[0]
+    element = [x for x in rds_room["queues"][queue] if x["user"] == user][0]
+    idx = rds_room["queues"][queue].index(element)
+    rds_room["queues"][queue][idx]["mark"] = 1 - marked
     rds.set("room"+room, json.dumps(rds_room))
     return True
 
