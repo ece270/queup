@@ -109,8 +109,8 @@
                 var response = await fetchAndLimit('roomd.wsgi?setup=true&action=del&room=' + roomname);
                 if (response.status != 200) {
                     alert("An error occurred while deleting the room.  Closing out anyway...");
-                    returnToOverlay();
                 }
+                returnToOverlay();
             }
             catch(err) {
                 alert("An error occurred on first fetch: " + err.toString());
@@ -279,6 +279,7 @@
                 };
                 window.evtSource.onerror = () => {
                     if (!window.disableErrors) {
+                        console.log(window.evtSource)
                         window.evtSource.close();
                         console.log("Connection lost.");
                         delete window.evtSource;

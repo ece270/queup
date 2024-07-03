@@ -14,7 +14,7 @@ if "@purdue.edu" in username:
 sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
 
 # load the HTML
-print ("Content-Type: text/html\r\n")
+print ("Content-Type: text/html\r\n")   
 with io.open('app.html', 'r', encoding='utf8') as file:
     # fill username
     data = file.read().replace("--username--", username)

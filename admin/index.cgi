@@ -1,41 +1,18 @@
 #! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os, io, sys, codecs, re
-import sqlite3
-from json import loads
+import os, io, sys, codecs, redis, re
 
-ROOM_RGX = r'^[A-Z0-9]{5}$'
+sys.stderr.write("environ: %s\n" % str(os.environ))
 
-class DBConnection:
-    def __init__(self, room_db):
-        self.conn = sqlite3.connect(room_db)
-        self.cur = self.conn.cursor()
-    def __enter__(self):
-        return [self.conn, self.cur]
-    def __exit__(self, type, value, traceback):
-        self.conn.commit()
-        self.conn.close()
+sys.path.append(os.environ['CONTEXT_DOCUMENT_ROOT'] + '/queup')
+from lib.lock import *
+from lib.methods import ROOM_RGX, getowners, getsections, getrooms
+from lib.ratelimiter import *
+from lib.wsgidefs import *
 
-def getowners(room_db, room):
-    if not os.path.exists(room_db):
-        return []
-    if not re.match(ROOM_RGX, room):
-        raise Exception("getowners: Room format incorrect: " + room)
-    with DBConnection(room_db) as [conn, cur]:
-        allusers = list(cur.execute("SELECT owners FROM room{0}".format(room)))
-        if len(allusers) == 0:
-            return []
-        allusers = allusers[0]
-        allusers = allusers[0].split(",")
-        return allusers
-
-def getsections(room):
-    if not os.path.exists(private + "sections/" + room + ".json"):
-        return {}
-    with open(private + "sections/" + room + ".json", "r") as f:
-        sections = loads(f.read())
-    return sections
+sys.path.append(os.environ['CONTEXT_DOCUMENT_ROOT'] + '/queup/admin')
+from alib.methods import *
 
 username = os.environ['REMOTE_USER']
 query = os.environ['QUERY_STRING']
@@ -57,19 +34,26 @@ sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
 
 private = os.environ['CONTEXT_DOCUMENT_ROOT'] + "../private/queup/"
 
+try:
+    rds = redis.Redis(unix_socket_path=open(private + 'redis_socket').read().strip())
+except:
+    print("Content-Type: text/plain\r\n")
+    print("Database connection failed.  Contact course staff **immediately**.")
+    sys.exit(0)
+
 # load the HTML
 print ("Content-Type: text/html\r\n")
 if "room" not in parse_qs:
     print("<h3>Please specify a room.</h3>")
 else:
+    room = parse_qs["room"]
     # check if room is real
-    if not os.path.exists(private + "rooms/" + parse_qs["room"] + ".db"):
+    if not re.search(ROOM_RGX, room) or not rds.get("room"+room):
         print("<h3>Room does not exist.</h3>")
         sys.exit(0)
     # check if user is in owners list
-    room_db = private + "rooms/" + parse_qs["room"] + ".db"
     room = parse_qs["room"]
-    owners = getowners(room_db, room)
+    owners = getowners(room)
     sectiondata = getsections(room)
     owners += [x for x in sectiondata if sectiondata[x] == "0"]
     if username not in owners:
