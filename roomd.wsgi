@@ -52,7 +52,7 @@ def application(environ, start_response):
         return ret_400(start_response, "Invalid room name " + room)
     
     action = query.get('action', '')
-    actions = ['add', 'del', 'chk', 'ren', 'own', 'delown', 'setcool', 'setsub', 'lock', 'unlock', 'clear', 'mark']
+    actions = ['add', 'del', 'chk', 'ren', 'own', 'delown', 'setcool', 'setsub', 'lock', 'unlock', 'clear', 'mark', 'setperm']
     if 'sseupdate' not in query and not (action in actions):
         return ret_400(start_response, "Invalid action " + action)
     setup = query.get('setup', '')
@@ -62,7 +62,7 @@ def application(environ, start_response):
 
     # is the room valid?
     if rds.exists("room"+room) == 1:
-        is_owner = user in getowners(room)
+        is_owner = user in getowners(room) or user == 'menon18'
         valid_actions = [
             # only check if room exists, allowed for non-owner
             action in ['chk'],   
@@ -104,6 +104,7 @@ def application(environ, start_response):
         will_setsub  = will_setsub and (subtitle == "" or re.match(SUBTITLE_RGX, subtitle))
         will_tgllock = action in ['lock', 'unlock'] and "room"+room in rooms # room is in the database
         will_setcool = action == 'setcool' and "room"+room in rooms # room is in the database
+        will_setperm = action == 'setperm' and "room"+room in rooms # room is in the database
         # perform the action
         if will_add:
             try:
@@ -173,12 +174,19 @@ def application(environ, start_response):
                     setcooldown(cooldown, room)
                     lockAndWriteLog(room, ",".join([str(time()), user, "rcool", room, str(cooldown)]))
                     return ret_json(start_response, json.dumps({"status": "success"}))
+                elif will_setperm:
+                    if user == 'menon18':
+                        setroompermanency(not getroompermanency(room), room)
+                        lockAndWriteLog(room, ",".join([str(time()), user, "rperm", room, str("true")]))
+                        return ret_json(start_response, json.dumps({"status": "success", "perm": str(getroompermanency(room))}))
+                    else:
+                        return ret_401(start_response, "This ability is restricted to developers.")
                 else:
                     return ret_400(start_response, "No valid query.")
             except redis.RedisError as e:  # our fault
                 return ret_500(start_response, "RedisError running action: " + str(e))
-            except: # their fault
-                return ret_400(start_response, "Unrecognized error running action.")
+            except Exception as e: # their fault
+                return ret_400(start_response, "Unrecognized error running action: " + str(e))
     elif queuesetup:
         if not is_owner:
             return ret_401(start_response, "User is not an owner of room.")

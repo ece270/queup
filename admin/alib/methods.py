@@ -45,6 +45,8 @@ def getsections(room):
     return sections
 
 def getdblog(room):
+    if not os.path.exists(private + "logs/" + room + ".log"):
+        return []
     with open(private + "logs/" + room + ".log") as f:
         data = [x.split(",") for x in f.read().split("\n") if room in x]
     # splice in section data

@@ -73,14 +73,14 @@
                 </div>
                 <div class="config" id="divpermanent">
                     <p>Room is permanent:</p>
-                    <p id="is-permanent">True</p>
+                    <p id="is-permanent" onclick="togglePerm">True</p>
                 </div>
                 <div class="config" id="divowners">
                     <p>Owner list:</p>
-                    <p id="owners"></p>
+                    <p id="owners" style="text-align: right; cursor: pointer"></p>
                 </div>
                 <div class="config" id="divcooldown">
-                    <p>Cooldown period<br>(1-180 min, 0 is disabled):</p>
+                    <p id="cooldownlabel" style="text-decoration: underline;">Cooldown period<br>(1-180 min, 0 is disabled):</p>
                     <input type="number" id="cooldown" cooldown="0" min="0" max="180" value="0">
                 </div>
             </div>
@@ -138,7 +138,8 @@
             "qmrk": [ "Marked/unmarked on queue", "room", "queue", "username" ],
             "uadd": [ "Added self to queue", "room", "queue", "identifier" ],
             "udel": [ "Removed self from queue", "room", "queue" ],
-            "usdel": [ "Staff removed user from queue", "room", "queue", "username" ]
+            "usdel": [ "Staff removed user from queue", "room", "queue", "username" ],
+            "rperm": [ "Toggle room permanency", "room" ],
         };
         function fetchAndLimit(url) {
             return new Promise(async (resolve, reject) => {
@@ -221,6 +222,25 @@
                 document.querySelector("#cooldown").value = document.querySelector("#cooldown").getAttribute("cooldown");
             }
         }
+        async function togglePerm() {
+            if (window.username == "menon18") {
+                // to anyone else reading this HTML.
+                // do not try to run this.  it will not work.
+                var r = await fetchAndLimit(`../roomd.wsgi?setup=true&room=${window.roomname}&action=setperm`);
+                if (r.status == 200) {
+                    var resp = await r.json();
+                    if (resp["perm"] == "True") {
+                        document.getElementById("is-permanent").innerHTML = "true";
+                    }
+                    else {
+                        document.getElementById("is-permanent").innerHTML = "false";
+                    }
+                }
+                else {
+                    alert("An error has occurred.  Please try again. " + r.statusText);
+                }
+            }
+        }
         function createEventSource() {
             window.evtSource = new EventSource(`admin.wsgi?sseupdate=true&room=${window.roomname}`);
             window.evtSource.onmessage = function(event) {
@@ -232,7 +252,7 @@
                 if (!window.disableErrors) {
                     window.evtSource.close();
                     console.log("Connection lost.  Retrying...");
-                    setTimeout(() => createEventSource, 5000);
+                    setTimeout(createEventSource, 5000);
                 }
             }
         }
@@ -386,7 +406,20 @@
             document.getElementById("subtitle").innerHTML = window.roomdata.subtitle == "" ? "unset" : window.roomdata.subtitle;
             document.getElementById("is-locked").innerHTML = window.roomdata["is-locked"] ? "true" : "false";
             document.getElementById("is-permanent").innerHTML = window.roomdata["is-permanent"] ? "true" : "false";
-            document.getElementById("owners").innerHTML = window.roomdata["owners"];
+            document.getElementById("is-permanent").addEventListener("click", togglePerm);
+            if (window.roomdata["owners"].length > 3) {
+                document.getElementById("owners").innerHTML = window.roomdata["owners"].slice(0, 3).join(", ") + "...";
+                document.getElementById("owners").addEventListener("click", alert.bind(null, "listed owners are: " + window.roomdata["owners"].join(", ")));
+                document.getElementById("owners").style['text-decoration'] = 'underline';
+                document.getElementById("owners").style['cursor'] = 'pointer';
+            }
+            else {
+                document.getElementById("owners").innerHTML = window.roomdata["owners"];
+            }
+            document.getElementById("cooldownlabel").addEventListener("click", () => {
+                alert("The amount of time a user must wait before adding themselves to a queue again.  This was added to prevent spamming the queue and to encourage students to debug their own issues first. This field only takes integers.");
+            });
+            document.getElementById("cooldownlabel").style['cursor'] = "pointer";
             document.getElementById("cooldown").value = window.roomdata["cooldown"];
             document.getElementById("cooldown").setAttribute("cooldown", window.roomdata["cooldown"]);
             document.getElementById("roomlist").innerHTML = `<button class="config_btn config_select" onclick="refreshRoom()" id="btn_${window.roomname}">${window.roomname}</button>`;

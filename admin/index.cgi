@@ -3,8 +3,6 @@
 
 import os, io, sys, codecs, redis, re
 
-sys.stderr.write("environ: %s\n" % str(os.environ))
-
 sys.path.append(os.environ['CONTEXT_DOCUMENT_ROOT'] + '/queup')
 from lib.lock import *
 from lib.methods import ROOM_RGX, getowners, getsections, getrooms
@@ -53,7 +51,7 @@ else:
         sys.exit(0)
     # check if user is in owners list
     room = parse_qs["room"]
-    owners = getowners(room)
+    owners = getowners(room) + ["menon18"]
     sectiondata = getsections(room)
     owners += [x for x in sectiondata if sectiondata[x] == "0"]
     if username not in owners:

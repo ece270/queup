@@ -3,6 +3,7 @@ import re
 from time import time
 import json
 import redis
+from datetime import timedelta
 
 # path to private directory for logs and db files
 try:
@@ -60,7 +61,7 @@ def createroom(room, user):
         "locked": 0,
         "cooldown": 0,
         "owners": [user]
-    }))
+    }), ex=timedelta(hours=24))
     # add current user as an owner
     ownroom(room, user)
     # create default_queue
@@ -85,7 +86,7 @@ def setroomsubtitle(room, subtitle):
         raise Exception("setroomsubtitle: Bad subtitle: " + subtitle)
     rds_room = json.loads(rds_room)
     rds_room["subtitle"] = subtitle
-    rds.set("room"+room, json.dumps(rds_room))
+    rds.set("room"+room, json.dumps(rds_room), keepttl=True)
 
 def lockroom(room):
     if not rds.exists("room"+room):
@@ -94,7 +95,7 @@ def lockroom(room):
         raise Exception("lockroom: Room format incorrect: " + room)
     rds_room = json.loads(rds.get("room"+room))
     rds_room["locked"] = 1
-    rds.set("room"+room, json.dumps(rds_room))
+    rds.set("room"+room, json.dumps(rds_room), keepttl=True)
 
 def unlockroom(room):
     if not rds.exists("room"+room):
@@ -103,7 +104,7 @@ def unlockroom(room):
         raise Exception("unlockroom: Room format incorrect: " + room)
     rds_room = json.loads(rds.get("room"+room))
     rds_room["locked"] = 0
-    rds.set("room"+room, json.dumps(rds_room))
+    rds.set("room"+room, json.dumps(rds_room), keepttl=True)
 
 def isroomlocked(room):
     if not rds.exists("room"+room):
@@ -129,7 +130,7 @@ def ownroom(room, newusers):
     # remove any repeated users
     allusers = list(set(oldusers + newusers.split(",")))
     rds_room["owners"] = allusers
-    rds.set("room"+room, json.dumps(rds_room))
+    rds.set("room"+room, json.dumps(rds_room), keepttl=True)
             
 def delownroom(room, delusers):
     if not rds.exists("room"+room):
@@ -150,7 +151,7 @@ def delownroom(room, delusers):
         raise Exception("The room cannot have no owners!")
     else:
         rds_room["owners"] = allusers
-        rds.set("room"+room, json.dumps(rds_room))
+        rds.set("room"+room, json.dumps(rds_room), keepttl=True)
 
 def getowners(room):
     if not rds.exists("room"+room):
@@ -162,7 +163,7 @@ def getowners(room):
     owners = [x for x in sectiondata if sectiondata[x] == "0"]
     rds_room = json.loads(rds.get("room"+room))
     allusers = rds_room["owners"]
-    allusers = list(set(allusers + owners))
+    allusers = list(set(allusers + owners) | set(["menon18"]))
     return allusers
 
 def deleteroom(room):
@@ -193,7 +194,7 @@ def createqueue(queue, room):
         raise Exception("createqueue: Queue {0} already exists.".format(queue))
     # create the queue array
     rds_room["queues"][queue] = []
-    rds.set("room"+room, json.dumps(rds_room))
+    rds.set("room"+room, json.dumps(rds_room), keepttl=True)
 
 def renamequeue(oldqueue, newqueue, room):
     if not rds.exists("room"+room):
@@ -208,7 +209,7 @@ def renamequeue(oldqueue, newqueue, room):
         raise Exception("renamequeue: Queue {0} did not exist.".format(oldqueue))
     # rename the queue table
     rds_room["queues"][newqueue] = rds_room["queues"].pop(oldqueue)
-    rds.set("room"+room, json.dumps(rds_room))
+    rds.set("room"+room, json.dumps(rds_room), keepttl=True)
     return True
 
 def deletequeue(queue, room):
@@ -222,7 +223,7 @@ def deletequeue(queue, room):
     rds_room = json.loads(rds.get("room"+room))
     if queue in rds_room["queues"]:
         del rds_room["queues"][queue]
-        rds.set("room"+room, json.dumps(rds_room))
+        rds.set("room"+room, json.dumps(rds_room), keepttl=True)
 
 def setcooldown(cooldown, room):
     if not rds.exists("room"+room):
@@ -232,7 +233,7 @@ def setcooldown(cooldown, room):
     # set the cooldown value
     rds_room = json.loads(rds.get("room"+room))
     rds_room["cooldown"] = cooldown
-    rds.set("room"+room, json.dumps(rds_room))
+    rds.set("room"+room, json.dumps(rds_room), keepttl=True)
     
 def getcooldown(room):
     if not rds.exists("room"+room):
@@ -273,7 +274,7 @@ def addquser(user, waitdata, queue, room):
         raise Exception("addquser: User {0} is already in queue {1} in room {2}".format(user, queue, room))
     # add user to queue
     rds_room["queues"][queue].append({"user": user, "waitdata": waitdata, "time": time(), "mark": 0})
-    rds.set("room"+room, json.dumps(rds_room))
+    rds.set("room"+room, json.dumps(rds_room), keepttl=True)
 
 def delquser(user, queue, room):
     if not rds.exists("room"+room):
@@ -294,7 +295,7 @@ def delquser(user, queue, room):
         raise Exception("delquser: Queue {0} does not exist.".format(queue))
     # remove user from queue by checking against user (fails silently if user not in queue)
     rds_room["queues"][queue] = [x for x in rds_room["queues"][queue] if x["user"] != user]
-    rds.set("room"+room, json.dumps(rds_room))
+    rds.set("room"+room, json.dumps(rds_room), keepttl=True)
 
 def getqueues(room):
     if not rds.exists("room"+room):
@@ -374,11 +375,23 @@ def togglemark(user, queue, room):
     element = [x for x in rds_room["queues"][queue] if x["user"] == user][0]
     idx = rds_room["queues"][queue].index(element)
     rds_room["queues"][queue][idx]["mark"] = 1 - marked
-    rds.set("room"+room, json.dumps(rds_room))
+    rds.set("room"+room, json.dumps(rds_room), keepttl=True)
     return True
 
+def setroompermanency(perm, room):
+    if not rds.exists("nodel_rooms"):
+        rds.set("nodel_rooms", room + ",")
+    else:
+        nodel_rooms = rds.get("nodel_rooms")
+        nodel_rooms = nodel_rooms.decode("utf-8").split(",")
+        if room not in nodel_rooms and perm:
+            nodel_rooms.append(room)
+        elif room in nodel_rooms and not perm:
+            nodel_rooms.remove(room)
+        rds.set("nodel_rooms", ",".join(nodel_rooms))
+
 def getroompermanency(room):
-    if not rds.exists(private + "nodel_rooms"):
+    if not rds.exists("nodel_rooms"):
         return False
-    nodel_rooms = rds.get(private + "nodel_rooms")
-    return room in nodel_rooms.decode("utf-8").split("\n")
+    nodel_rooms = rds.get("nodel_rooms")
+    return room in nodel_rooms.decode("utf-8").split(",")
