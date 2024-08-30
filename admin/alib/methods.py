@@ -18,6 +18,11 @@ def sectiondata(room, data="", action="get"):
             # convert JSON to CSV
             data = loads(f.read())
             keys = list(data.keys())
+            for k in keys:
+                # drop all keys that start with an #
+                if k.startswith("#"):
+                    del data[k]
+            keys = list(data.keys())
             vals = list(data.values())
             data = [",".join([keys[i], vals[i]]) for i in range(len(keys))]
             data = "\n".join(["username,section"] + data)
@@ -28,6 +33,8 @@ def sectiondata(room, data="", action="get"):
         if not data.startswith("username"):
             data = "username,section\n" + data
         data = list(csv.DictReader(data.split("\n")))
+        # drop all keys that start with an #
+        data = [x for x in data if not x["username"].startswith("#")]
         data = {x["username"]: x["section"] for x in data}
         with open(private + '/sections/' + room + '.json', 'w') as f:
             f.write(dumps(data))

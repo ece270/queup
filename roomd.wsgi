@@ -38,9 +38,13 @@ def application(environ, start_response):
         return ret_401(start_response, "No user provided.")
     
     # check rate limit for this user
-    with RateLimiter(private + "ratelimit.db") as [rl, conn, cur]:
+    with RateLimiter(private + "ratelimit.db", environ) as rl:
         if rl.should_limit(user):
             return ret_429(start_response, "Rate limit exceeded.")
+
+    # add a ?test=1 route
+    if 'QUERY_STRING' in environ and environ['QUERY_STRING'] == 'test=1':
+        return ret_ok(start_response, "OK")
 
     query = parse_qs(environ['QUERY_STRING'])
     # change values to strings
@@ -79,7 +83,7 @@ def application(environ, start_response):
         is_owner = True
     # so no db exists, and we're not creating one. what on earth are you doing?
     else:
-        return ret_400(start_response, "Malformed request.")
+        return ret_400(start_response, "Malformed request, no room " + room)
     
     newusers = query.get('newusers', '')
     subtitle = query.get('subtitle', '')
@@ -144,7 +148,7 @@ def application(environ, start_response):
                 return ret_401(start_response, "User is not an owner of room.")
             try:
                 if will_del:
-                    if room in open(private + "nodel_rooms").read():
+                    if getroompermanency(room):
                         return ret_400(start_response, "Room is permanent.")
                     deleteroom(room)
                     lockAndWriteLog(room, ",".join([str(time()), user, "rdel", room]))
@@ -336,14 +340,17 @@ def sseupdate(environ, start_response):
 
     yield ("data: %s\n\n" % json.dumps(getusers("", room))).encode()
     # this time, add a timeout so it doesn't hang forever
-    rds = redis.Redis(unix_socket_path=open(private + 'redis_socket').read().strip(), socket_timeout=60)
+    rds = redis.Redis(unix_socket_path=open(private + 'redis_socket').read().strip(), socket_timeout=30)
     try:
         with rds.monitor() as m:
             for command in m.listen():
+                if 'wsgi.errors' in environ and environ['wsgi.errors'].closed:
+                    break  # Break the loop if the client disconnects
                 cmd = command['command'].lower()
                 if "del room"+room.lower() in cmd or "set room"+room.lower() in cmd:
                     try:
                         yield ("data: %s\n\n" % json.dumps(getusers("", room))).encode()
+                        #sys.stderr.write("DEBUG sseupdate: " + str(environ['REMOTE_USER']) + "," + str(room) + "," + str(os.getpid()) + "\n")
                     except:
                         try:
                             sys.exit(0)
@@ -351,12 +358,13 @@ def sseupdate(environ, start_response):
                             os._exit(0)
     except: # includes redis.TimeoutError
         try:
-            return ("data: %s\n\n" % json.dumps(getusers("", room))).encode()
+            yield ("data: %s\n\n" % json.dumps(getusers("", room))).encode()
         except:
             try:
                 sys.exit(0)
             except:
                 os._exit(0)
+    yield ("data: %s\n\n" % json.dumps(getusers("", room))).encode()
                 
 MIDDLEWARES = [ ]
 app = reduce(lambda h, m: m(h), MIDDLEWARES, application)

@@ -2,6 +2,7 @@ import os
 import sys
 import sqlite3
 from time import time
+import redis
 
 # implements a rate limiter class using the token bucket algo 
 
@@ -10,29 +11,23 @@ from time import time
 # if so, return false. otherwise, return true and update the database.
 
 class RateLimiter:
-    def __init__(self, dbpath):
+    def __init__(self, dbpath, environ):
         self.dbpath = dbpath
+        self.environ = environ
     def __enter__(self):
-        create = not os.path.exists(self.dbpath)
-        self.conn = sqlite3.connect(self.dbpath)
-        self.cur = self.conn.cursor()
-        if create:
-            with self.conn:
-                self.cur.execute("CREATE TABLE ratelimit (username TEXT KEY, time REAL)")
-        return [self, self.conn, self.cur]
+        environ = self.environ
+        private = environ['DOCUMENT_ROOT'] + environ['CONTEXT_PREFIX'].replace('~', '') + '/private/queup/'
+        try:
+            self.conn = redis.Redis(unix_socket_path=open(private + 'redis_socket').read().strip())
+        except:
+            raise Exception("Database connection failed.  Contact course staff **immediately**.")
+        # increment for user with expiration of 1 second
+        self.conn.incr('rl:' + environ['REMOTE_USER'])
+        self.conn.expire('rl:' + environ['REMOTE_USER'], 1)
+        return self
     def __exit__(self, type, value, traceback):
-        self.conn.commit()
         self.conn.close()
     def should_limit(self, username):
-        # get the last 5 requests
-        last5 = [x[0] for x in self.cur.execute("SELECT time FROM ratelimit WHERE username == (?) ORDER BY time DESC LIMIT 5", (username,))]
-        # if there are less than 5 requests, then we're good
-        if len(last5) < 5:
-            self.cur.execute("INSERT INTO ratelimit (username, time) VALUES (?, ?)", (username, time()))
-            return False
-        # if the last request was more than a second ago, we're good
-        if time() - last5[-1] > 1:
-            self.cur.execute("INSERT INTO ratelimit (username, time) VALUES (?, ?)", (username, time()))
-            return False
-        # otherwise, we're not good
-        return True
+        if int(self.conn.get('rl:' + username).decode('utf8')) > 3:
+            return True
+        return False

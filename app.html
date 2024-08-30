@@ -71,8 +71,8 @@
             return new Promise(async (resolve, reject) => {
                 try {
                     var resp = await fetch(url);
-                    if (resp.status == 412) {   // mod_python can't do 429 for some weird reason, so we'll use PRECONDITION_FAILED
-                        alert("You appear to be sending too many requests.  Please slow down.");
+                    if (resp.status == 429) {
+                        alert("You appear to be sending too many requests.  Please slow down.  Actions are blocked for the next 30 seconds.");
                         reject("Too many requests");
                     }
                     else if (resp.status == 423) {
@@ -108,7 +108,16 @@
                     return;
                 }
                 var response = await fetchAndLimit('roomd.wsgi?setup=true&action=del&room=' + roomname);
-                if (response.status != 200) {
+                if (response.status == 400) {
+                    var t = await response.text();
+                    if (t.includes("permanent")) {
+                        alert("This room is marked as permanent.  As a result, it cannot be deleted.");
+                    }
+                    else {
+                        alert("An error occurred while deleting the room.  Closing out anyway...");
+                    }
+                }
+                else if (response.status != 200) {
                     alert("An error occurred while deleting the room.  Closing out anyway...");
                 }
                 returnToOverlay();
@@ -267,6 +276,7 @@
                     // close the event source and return to the overlay.
                     console.log(json);
                     if (Object.keys(json).length == 0) {
+                        clearInterval(window.activityCheck);
                         returnToOverlay();
                         return;
                     }
@@ -279,17 +289,78 @@
                     // who submit too many requests per second (cannot possibly be more than 3 requests per second).
                     window.disableOperations = false;
                 };
-                window.evtSource.onerror = () => {
-                    if (!window.disableErrors) {
-                        console.log(window.evtSource)
-                        window.evtSource.close();
-                        console.log("Connection lost.");
-                        delete window.evtSource;
+                window.evtSource.onerror = async () => {
+                    function handleError(test={'status': 0}, err) {
                         window.evtSource = null;
+                        delete window.evtSource;
+                        if (test.status == 400) {
+                            alert("An unknown error occurred while trying to reconnect to the server.  The returned status was 400, which could mean the room was deleted.");
+                            returnToOverlay();
+                        }
+                        else if ((test.status == 502) || (test.status == 503)) {
+                            console.error("Server returned 502/503.  Could be restarting, waiting for 10 seconds before retrying...");
+                            setTimeout(createEventSource, 10000);
+                        }
+                        else {
+                            if (test.status == 0) {
+                                alert("An unknown error occurred while trying to reconnect to the server.  The returned error was: " + err.toString());
+                            }
+                            else {
+                                alert("An unknown error occurred while trying to reconnect to the server.  The returned status was: " + test.status);
+                            }
+                            if (err) {
+                                console.error(err);
+                            }
+                        }
                         // retry...
-                        setTimeout(createEventSource, 1000);
+                    }
+                    if (!window.disableErrors) {
+                        // first, test the connection
+                        // create an AbortController to stop the network request because sseupdate will not return
+                        // unless there's an error
+                        const controller = new AbortController()
+                        const signal = controller.signal
+                        try {
+                            // do we have Internet?
+                            var test = await fetch("https://engineering.purdue.edu/~menon18/", {signal, cache: "no-store"});
+                            if (test.status == 200) {
+                                // then it was just a regular drop
+                                // kill the connection
+                                controller.abort();
+                                if (window.evtSource)
+                                    window.evtSource.close();
+                                console.log("Connection lost.");
+                                window.evtSource = null;
+                                delete window.evtSource;
+                                // retry...
+                                setTimeout(createEventSource, 1000);
+                            }
+                            else {
+                                handleError(test, null);
+                            }
+                        }
+                        catch(err) {
+                            handleError({status: 0}, err);
+                        }
+                        controller.abort();
                     }
                 }
+                // create an interval to check for activity every 1 hour.
+                // closeRoom if no activity is detected.
+                window.activityCheck = setInterval(() => {
+                    if (window.activityCheck) {
+                        clearInterval(window.activityCheck);
+                        window.activityCheck = null;
+                    }
+                    // if not set, create a start time
+                    if (!window.lastActivity)
+                        window.lastActivity = Date.now();
+                    // if the last activity was more than 1 hour ago, close the room.
+                    if ((Date.now() - window.lastActivity) >= 60*60*1000) {
+                        returnToOverlay();
+                        alert("No activity detected for 1 hour, room closed.  Do not keep the room open if you are not using it!");
+                    }
+                }, 60*60*1000);
             }
             else {
                 alert("This browser does not support Server-Sent Events, which is required to handle room functionality.  Use a more modern browser like Firefox or Chrome.");
@@ -347,6 +418,10 @@
                             break;
                     }
                 });
+                if (actions.length > 0) {
+                    // reset activity start time
+                    window.lastActivity = Date.now();
+                }
                 // check if marked has changed for existing users
                 q.forEach(e => {
                     var elm = selectElmByUsername(e[0], _q);
@@ -419,7 +494,7 @@
                     document.getElementById("joinroom").value = room;
                     joinRoom();
                 }
-            }, 500);
+            }, 250);
         }
         function syncArr(_old, _new) {
             var actions = [];
@@ -771,7 +846,7 @@
                 try { owners = owners.split(","); }
                 catch(err) { owners = null; }
                 if (owners != "" && !/^[a-z0-9\-, /]{3,300}$/.test(owners.join(","))) {
-                    alert("Usernames must be alphanumeric with optional hyphens, be more than 3 characters and less than 16 characters long.");
+                    alert("Usernames must be alphanumeric with optional hyphens, be more than 3 characters and less than 16 characters long.\nIf you were putting in a lot of people's usernames at once, consider splitting the list and trying again.");
                     owners = null;
                 }
             }
