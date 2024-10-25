@@ -12,6 +12,13 @@ from lib.wsgidefs import *
 sys.path.append(os.environ['CONTEXT_DOCUMENT_ROOT'] + '/queup/admin')
 from alib.methods import *
 
+def getsections(room):
+    if not os.path.exists(private + "sections/" + room + ".json"):
+        return {}
+    with open(private + "sections/" + room + ".json", "r") as f:
+        sections = loads(f.read())
+    return sections
+
 username = os.environ['REMOTE_USER']
 query = os.environ['QUERY_STRING']
 
