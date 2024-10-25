@@ -106,33 +106,14 @@ nav > div {
     border-radius: 100%;
     transition: all 0.2s;
 }
+#queueSwitchCircle {
+    left: var(--queueadd-position);
+}
 #themeSwitchCircle:before {
     content: var(--switch-icon);
-    color: var(--text-color);
 }
-
-#utilSwitchCircle {
-    left: var(--util-switch-position);
-}
-#utilSwitchCircle:before {
-    content: var(--util-switch-icon);
-    color: var(--text-color);
-}
-
-#anyStudentSwitchCircle {
-    left: var(--anystudent-switch-position);
-}
-#anyStudentSwitchCircle:before {
-    content: var(--anystudent-switch-icon);
-    color: var(--text-color);
-}
-
-#roomDisabledSwitchCircle {
-    left: var(--roomdisabled-switch-position);
-}
-#roomDisabledSwitchCircle:before {
-    content: var(--roomdisabled-switch-icon);
-    color: var(--text-color);
+#queueSwitchCircle:before {
+    content: var(--queueadd-icon);
 }
 
 h1,
@@ -378,6 +359,14 @@ body {
 #queueadd:hover {
     background: var(--boilermaker-gold-transparent);
 }
+:root, [singlequeue="true"] {
+    --queueadd-position: 25px;
+    --queueadd-icon: "🔒";
+}
+[singlequeue="false"] {
+    --queueadd-position: -15px;
+    --queueadd-icon: "🔓";
+}
 :root, [util="rooms"] {
     --rooms-show: flex;
     --timer-show: none;
@@ -469,7 +458,7 @@ hr {
     width: 30%;
     color: var(--text-color);
     font-size: 18px;
-    margin: 4px;
+    margin: 8px;
     height: 4vh;
     border: 1px solid var(--softer-btn-border);
     background-color: transparent;

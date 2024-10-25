@@ -395,3 +395,21 @@ def getroompermanency(room):
         return False
     nodel_rooms = rds.get("nodel_rooms")
     return room in nodel_rooms.decode("utf-8").split(",")
+
+def get1q(room):
+    if not rds.exists("singleq_rooms"):
+        return False
+    singleq_rooms = rds.get("singleq_rooms")
+    return room in singleq_rooms.decode("utf-8").split(",")
+
+def set1q(perm, room):
+    if not rds.exists("singleq_rooms"):
+        rds.set("singleq_rooms", room + ",")
+    else:
+        singleq_rooms = rds.get("singleq_rooms")
+        singleq_rooms = singleq_rooms.decode("utf-8").split(",")
+        if room not in singleq_rooms and perm:
+            singleq_rooms.append(room)
+        elif room in singleq_rooms and not perm:
+            singleq_rooms.remove(room)
+        rds.set("singleq_rooms", ",".join(singleq_rooms))

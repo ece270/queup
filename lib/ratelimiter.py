@@ -22,8 +22,12 @@ class RateLimiter:
         except:
             raise Exception("Database connection failed.  Contact course staff **immediately**.")
         # increment for user with expiration of 1 second
-        self.conn.incr('rl:' + environ['REMOTE_USER'])
-        self.conn.expire('rl:' + environ['REMOTE_USER'], 1)
+        # pipeline it so it is all done in one go in case of 
+        # multiple connections
+        pipe = self.conn.pipeline()
+        pipe.incr('rl:' + environ['REMOTE_USER'])
+        pipe.expire('rl:' + environ['REMOTE_USER'], 1)
+        pipe.execute()
         return self
     def __exit__(self, type, value, traceback):
         self.conn.close()

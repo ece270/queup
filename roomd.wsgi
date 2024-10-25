@@ -56,7 +56,7 @@ def application(environ, start_response):
         return ret_400(start_response, "Invalid room name " + room)
     
     action = query.get('action', '')
-    actions = ['add', 'del', 'chk', 'ren', 'own', 'delown', 'setcool', 'setsub', 'lock', 'unlock', 'clear', 'mark', 'setperm']
+    actions = ['add', 'del', 'chk', 'ren', 'own', 'delown', 'setcool', 'setsub', 'lock', 'unlock', 'clear', 'mark', 'setperm', 'tgl1q']
     if 'sseupdate' not in query and not (action in actions):
         return ret_400(start_response, "Invalid action " + action)
     setup = query.get('setup', '')
@@ -109,6 +109,7 @@ def application(environ, start_response):
         will_tgllock = action in ['lock', 'unlock'] and "room"+room in rooms # room is in the database
         will_setcool = action == 'setcool' and "room"+room in rooms # room is in the database
         will_setperm = action == 'setperm' and "room"+room in rooms # room is in the database
+        will_tgl1q   = action == 'tgl1q' and "room"+room in rooms # room is in the database
         # perform the action
         if will_add:
             try:
@@ -126,6 +127,7 @@ def application(environ, start_response):
             userdata["is-locked"] = False
             # it is possible to define a room first before creating it, so check permanency anyway
             userdata["is-permanent"] = getroompermanency(room)
+            userdata["is-singlequeue"] = get1q(room)
             lockAndWriteLog(room, ",".join([str(time()), user, "rcreate", room]))
             return ret_json(start_response, json.dumps(userdata))
         elif will_chk:
@@ -140,6 +142,7 @@ def application(environ, start_response):
             userdata["subtitle"] = getroomsubtitle(room)
             userdata["is-locked"] = isroomlocked(room)
             userdata["is-permanent"] = getroompermanency(room)
+            userdata["is-singlequeue"] = get1q(room)
             if "admin" not in query or not is_owner:
                 lockAndWriteLog(room, ",".join([str(time()), user, "rchk", room]))
             return ret_json(start_response, json.dumps(userdata))
@@ -185,6 +188,10 @@ def application(environ, start_response):
                         return ret_json(start_response, json.dumps({"status": "success", "perm": str(getroompermanency(room))}))
                     else:
                         return ret_401(start_response, "This ability is restricted to developers.")
+                elif will_tgl1q:
+                    set1q(not get1q(room), room)
+                    lockAndWriteLog(room, ",".join([str(time()), user, "r1q", room, str("true")]))
+                    return ret_json(start_response, json.dumps({"status": "success", "1q": str(get1q(room))}))
                 else:
                     return ret_400(start_response, "No valid query.")
             except redis.RedisError as e:  # our fault
@@ -288,6 +295,11 @@ def application(environ, start_response):
                         rem_min = int(cooldown - (time() - lastadd) / 60)
                         rem_sec = int((cooldown - (time() - lastadd) / 60) % 1 * 60)
                         return ret_ok(start_response, "[cooldown] This room only permits you to add yourself to any queue every %d minutes. Please wait %d minutes and %s seconds before adding yourself again." % (cooldown, rem_min, rem_sec))
+                if get1q(room):
+                    # ensure that user is not in any other queues
+                    for q in getqueues(room):
+                        if any([user == x[0] for x in getusers(q, room)]):
+                            return ret_ok(start_response, "[singlequeue] You are already in a queue.")
                 waitdata = query.get('waitdata', '')
                 if waitdata != '' and not re.match(WAITDATA_RGX, waitdata):
                     return ret_400(start_response, "Invalid waitdata.")
@@ -341,13 +353,18 @@ def sseupdate(environ, start_response):
     yield ("data: %s\n\n" % json.dumps(getusers("", room))).encode()
     # this time, add a timeout so it doesn't hang forever
     rds = redis.Redis(unix_socket_path=open(private + 'redis_socket').read().strip(), socket_timeout=30)
+    start_time = time()
+    LIMIT = 60
     try:
         with rds.monitor() as m:
             for command in m.listen():
                 if 'wsgi.errors' in environ and environ['wsgi.errors'].closed:
-                    break  # Break the loop if the client disconnects
+                    return ret_200(start_response, "data: %s\n\n" % json.dumps(getusers("", room)))
                 cmd = command['command'].lower()
+                if (time() - start_time) > LIMIT:
+                    return ret_200(start_response, "data: %s\n\n" % json.dumps(getusers("", room)))
                 if "del room"+room.lower() in cmd or "set room"+room.lower() in cmd:
+                    start_time = time()
                     try:
                         yield ("data: %s\n\n" % json.dumps(getusers("", room))).encode()
                         #sys.stderr.write("DEBUG sseupdate: " + str(environ['REMOTE_USER']) + "," + str(room) + "," + str(os.getpid()) + "\n")

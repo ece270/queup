@@ -303,10 +303,10 @@
                         }
                         else {
                             if (test.status == 0) {
-                                alert("An unknown error occurred while trying to reconnect to the server.  The returned error was: " + err.toString());
+                                // alert("An unknown error occurred while trying to reconnect to the server.  The returned error was: " + err.toString());
                             }
                             else {
-                                alert("An unknown error occurred while trying to reconnect to the server.  The returned status was: " + test.status);
+                                // alert("An unknown error occurred while trying to reconnect to the server.  The returned status was: " + test.status);
                             }
                             if (err) {
                                 console.error(err);
@@ -315,46 +315,42 @@
                         // retry...
                     }
                     if (!window.disableErrors) {
-                        // first, test the connection
-                        // create an AbortController to stop the network request because sseupdate will not return
-                        // unless there's an error
-                        const controller = new AbortController()
-                        const signal = controller.signal
-                        try {
-                            // do we have Internet?
-                            var test = await fetch("https://engineering.purdue.edu/~menon18/", {signal, cache: "no-store"});
-                            if (test.status == 200) {
-                                // then it was just a regular drop
-                                // kill the connection
-                                controller.abort();
-                                if (window.evtSource)
-                                    window.evtSource.close();
-                                console.log("Connection lost.");
-                                window.evtSource = null;
-                                delete window.evtSource;
-                                // retry...
-                                setTimeout(createEventSource, 1000);
-                            }
-                            else {
-                                handleError(test, null);
-                            }
-                        }
-                        catch(err) {
-                            handleError({status: 0}, err);
-                        }
-                        controller.abort();
+                        if (window.evtSource)
+                            window.evtSource.close();
+                        console.log("Connection lost.");
+                        window.evtSource = null;
+                        delete window.evtSource;
+                        // retry...
+                        setTimeout(createEventSource, 1000);
+                        // // first, test the connection
+                        // // create an AbortController to stop the network request because sseupdate will not return
+                        // // unless there's an error
+                        // const controller = new AbortController()
+                        // const signal = controller.signal
+                        // try {
+                        //     // do we have Internet?
+                        //     var test = await fetch("https://engineering.purdue.edu/~menon18/", {signal, cache: "no-store"});
+                        //     if (test.status == 200) {
+                        //         // then it was just a regular drop
+                        //         // kill the connection
+                        //         controller.abort();
+                        //     }
+                        //     else {
+                        //         handleError(test, null);
+                        //     }
+                        // }
+                        // catch(err) {
+                        //     handleError({status: 0}, err);
+                        // }
+                        // controller.abort();
                     }
                 }
                 // create an interval to check for activity every 1 hour.
                 // closeRoom if no activity is detected.
+                if (!window.lastActivity)
+                    window.lastActivity = Date.now();
                 window.activityCheck = setInterval(() => {
-                    if (window.activityCheck) {
-                        clearInterval(window.activityCheck);
-                        window.activityCheck = null;
-                    }
                     // if not set, create a start time
-                    if (!window.lastActivity)
-                        window.lastActivity = Date.now();
                     // if the last activity was more than 1 hour ago, close the room.
                     if ((Date.now() - window.lastActivity) >= 60*60*1000) {
                         returnToOverlay();
@@ -419,7 +415,7 @@
                     }
                 });
                 if (actions.length > 0) {
-                    // reset activity start time
+                    // reset activity start time for the inactivity timer
                     window.lastActivity = Date.now();
                 }
                 // check if marked has changed for existing users
@@ -588,6 +584,11 @@
                             if (t.startsWith("[cooldown]")) {
                                 alert(t.split(" ").slice(1).join(" "));
                                 delSelf(queue);
+                            }
+                            else if (t.startsWith("[singlequeue]")) {
+                                alert(t.split(" ").slice(1).join(" "));
+                                delSelf(queue);
+                                window.disableOperations = false;
                             }
                         })
                         .catch(err => {

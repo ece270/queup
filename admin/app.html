@@ -83,6 +83,14 @@
                     <p id="cooldownlabel" style="text-decoration: underline;">Cooldown period<br>(1-180 min, 0 is disabled):</p>
                     <input type="number" id="cooldown" cooldown="0" min="0" max="180" value="0">
                 </div>
+                <div class="config" id="divsinglequeue">
+                    <p id="singlequeuelabel" style="text-decoration: underline;">Limit to one queue</p>
+                    <div id="slider">
+                        <span class="switchCylinder" role="img" aria-label="queue_switch" onclick="toggleSingleQueue()">
+                            <span class="switchCircle" id="queueSwitchCircle"></span>
+                        </span>
+                    </div>
+                </div>
             </div>
             <hr>
             <div class="config">
@@ -140,12 +148,13 @@
             "udel": [ "Removed self from queue", "room", "queue" ],
             "usdel": [ "Staff removed user from queue", "room", "queue", "username" ],
             "rperm": [ "Toggle room permanency", "room" ],
+            "r1q": [ "Toggle single queue", "room" ]
         };
         function fetchAndLimit(url) {
             return new Promise(async (resolve, reject) => {
                 try {
                     var resp = await fetch(url);
-                    if (resp.status == 412) {   // mod_python can't do 429 for some weird reason, so we'll use PRECONDITION_FAILED
+                    if (resp.status == 429) {
                         alert("You appear to be sending too many requests.  Please slow down.");
                         reject("Too many requests");
                     }
@@ -380,6 +389,25 @@
                 alert("An error has occurred.  Please try again. " + r.statusText);
             }
         }
+        function toggleSingleQueue() {
+            var r = fetchAndLimit(`../roomd.wsgi?setup=true&room=${window.roomname}&action=tgl1q`);
+            r.then(async (resp) => {
+                if (resp.status == 200) {
+                    var resp = await resp.json();
+                    if (resp["1q"] == "False") {
+                        document.documentElement.setAttribute("singlequeue", "false");
+                        document.getElementById("queueSwitchCircle").style["left"] = "-15px";
+                    }
+                    else {
+                        document.documentElement.setAttribute("singlequeue", "true");
+                        document.getElementById("queueSwitchCircle").style["left"] = "25px";
+                    }
+                }
+                else {
+                    alert("An error has occurred.  Please try again. " + resp.statusText);
+                }
+            });
+        }
         window.onbeforeunload = () => {
             window.disableErrors = true;
         }
@@ -406,6 +434,7 @@
             document.getElementById("subtitle").innerHTML = window.roomdata.subtitle == "" ? "unset" : window.roomdata.subtitle;
             document.getElementById("is-locked").innerHTML = window.roomdata["is-locked"] ? "true" : "false";
             document.getElementById("is-permanent").innerHTML = window.roomdata["is-permanent"] ? "true" : "false";
+            document.documentElement.setAttribute("singlequeue", window.roomdata["is-singlequeue"] ? "true" : "false");
             document.getElementById("is-permanent").addEventListener("click", togglePerm);
             if (window.roomdata["owners"].length > 3) {
                 document.getElementById("owners").innerHTML = window.roomdata["owners"].slice(0, 3).join(", ") + "...";
@@ -416,12 +445,19 @@
             else {
                 document.getElementById("owners").innerHTML = window.roomdata["owners"];
             }
+            
             document.getElementById("cooldownlabel").addEventListener("click", () => {
                 alert("The amount of time a user must wait before adding themselves to a queue again.  This was added to prevent spamming the queue and to encourage students to debug their own issues first. This field only takes integers.");
             });
             document.getElementById("cooldownlabel").style['cursor'] = "pointer";
             document.getElementById("cooldown").value = window.roomdata["cooldown"];
             document.getElementById("cooldown").setAttribute("cooldown", window.roomdata["cooldown"]);
+            
+            document.getElementById("singlequeuelabel").addEventListener("click", () => {
+                alert("This prevents users from joining more than one queue simultaneously.");
+            });
+            document.getElementById("singlequeuelabel").style['cursor'] = "pointer";
+            
             document.getElementById("roomlist").innerHTML = `<button class="config_btn config_select" onclick="refreshRoom()" id="btn_${window.roomname}">${window.roomname}</button>`;
             // get section data if it exists
             var r = await fetchAndLimit(`admin.wsgi?room=${window.roomname}&section=true`);
@@ -440,7 +476,7 @@
             var sectionfilter = document.getElementById("secbtn");
             sections.forEach(s => {
                 var btn = document.createElement("button");
-                btn.style.width = "35px";
+                btn.style.width = "30%";
                 btn.innerHTML = s;
                 btn.classList.add("config_btn");
                 btn.style.margin = "0 5px";

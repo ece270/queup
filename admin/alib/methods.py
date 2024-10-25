@@ -24,7 +24,7 @@ def sectiondata(room, data="", action="get"):
                     del data[k]
             keys = list(data.keys())
             vals = list(data.values())
-            data = [",".join([keys[i], vals[i]]) for i in range(len(keys))]
+            data = [",".join([keys[i], vals[i]]) for i in range(len(keys)) if keys[i] and vals[i]]
             data = "\n".join(["username,section"] + data)
             return data
     elif action == "set" and data != "":
