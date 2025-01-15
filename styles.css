@@ -620,15 +620,20 @@ hr {
 	cursor: pointer;
 	border: 1px solid transparent;
     transition: border 0.2s;
+    filter: var(--help-invert);
 }
-#help::before {
+#help {
+    width: 1.15em;
+    height: 1.15em;
+}
+/* #help::before {
     content: '';
 }
 #help.opened {
     z-index: 5;
     border: 1px solid var(--softer-btn-border);
     content: '❌';
-}
+} */
 .collapsible.opened {
     display: flex;
     border: 1px solid var(--softer-btn-border);
@@ -808,6 +813,7 @@ video {
     --flipped-text-color: #222;
     --btn-color: #222;
     --hsl-luminance: 100%;
+    --help-invert: invert(0);
 }
 [theme="light"] {
     --waiter-bg-0: hsl(180, 100%, 35%);
@@ -836,4 +842,5 @@ video {
     --flipped-text-color: #fff;
     --btn-color: #fff;
     --hsl-luminance: 30%;
+    --help-invert: invert(1);
 }
